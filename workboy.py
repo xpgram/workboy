@@ -124,6 +124,7 @@ def parseDate(s):
     datePatterns = (
         '%b %d, %Y',
         '%b %d',
+        '%Y-%m-%d',
         '%m-%d-%y',
         '%m-%d-%Y',
         '%m-%d'
@@ -1015,9 +1016,15 @@ if get(0, argv) == 'restore-archive':
 
 # Print archive files.
 if get(0, argv) == 'display-archives':
-    # TODO I'll need os.read() or whatever.
-    # TODO Also, restore workboy file from laptop
-    # TODO Also, add records for "OMG Coders" and... "Caravel." I think that's all I did.
+    files = [f for f in os.listdir(datafolderPath) if os.path.isfile(os.path.join(datafolderPath, f))]
+    files = [f for f in files if f not in ["workboy_data", "workboy_backup"]]
+
+    pre = "Held archives:\n" if len(files) > 0 else "No archived records."
+    printBuffer(pre)
+    for f in files:
+        printBuffer(f)
+
+    displayBuffer()
     exit()
 
 # Delete an archive file.
