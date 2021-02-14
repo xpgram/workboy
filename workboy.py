@@ -13,6 +13,7 @@ import re
 helpText = '''
 workboy                     : Display recent activity.
 workboy all                 : Displays the entire company index.
+workboy recent              : Displays all log activities from the last 30 days.
 workboy [name]              : Displays a company record by name or ID. Starts the edit-poller.
 workboy add [name]          : Add a new company to the index. Starts the edit-poller.
 workboy del [name]          : Deletes a company by name or ID from the index.
@@ -35,6 +36,23 @@ rename [name]               : Changes the record's name.
                               To change the company's street address, url, phone number, etc.:
                               submit it into polling, the interpreter will figure out what it is
                               and update the record as such.
+
+Archiving and data-restoration commands.
+
+workboy always saves a copy of the previous data record before writing the current one, in
+case of catastrophic data failure. workboy attempts to be smart about this, but it is still
+possible to overwrite your data and your auto-backup data, so be careful.
+
+workboy's archival functions are its best data failsafes: they cannot be overwritten as a
+matter of workboy's typical operations. It is recommended to archive periodically and before
+any changes to workboy's code.
+
+workboy restore-backup          : Restores the last auto-backup to the current record.
+workboy archive                 : Save a copy of the record as is under today's date.
+workboy restore-archive [date]  : Restores an archive file to the current data record
+                                  if the given date is valid.
+workboy display-archives        : Prints all known archive files.
+workboy delete-archive          : Deletes an archive file if the given date is valid.
 '''.strip()
 
 
@@ -419,7 +437,7 @@ def displayHelpText(state):
     "Prints program usage instructions to the console."
     printBuffer(helpText)
     displayBuffer()
-    return endProcessing(state)
+    return cancelChanges(state)
 
 def displayRecents(state):
     "Display an at-a-glance look at any pending job applications."
@@ -450,7 +468,7 @@ def displayRecents(state):
 
     displayBuffer()
     
-    return state
+    return cancelChanges(state)
 
 def displayAll(state):
     "Display an at-a-glance look at all job applications, past and present."
@@ -461,7 +479,31 @@ def displayAll(state):
         printBuffer('Company index is empty. Nothing to show.')
     displayBuffer()
 
-    return state
+    return cancelChanges(state)
+
+def displayRecentActivity(state):
+    "Display logged activities from the last 30 days."
+
+    today = date.today()
+    activities = []
+
+    # Collect all relevant logs from all company records
+    for record in state.index.values():
+        for log in record['log'].values():
+            log = log.copy()
+            log['company'] = record['name']
+            log['dateEval'] = dateFromString(log['date'])
+            if (today - log['dateEval']).days <= 30:
+                activities.append(log)
+
+    # Sort and print
+    calendar = sorted(activities, key=lambda log: log['dateEval'])
+    for log in calendar:
+        ellipses = '...' if len(log['message']) > 70 else ''
+        printBuffer('{:<20} > {} : {:<70}{}'.format(log['company'], log['date'], log['message'], ellipses))
+    displayBuffer()
+
+    return cancelChanges(state)
 
 def addCompany(state):
     "Adds a new record to the company index. Assumes all input thereafter are company details."
@@ -559,6 +601,7 @@ def cancelChanges(state):
 globalRecordSet = Switcher({
     None: displayRecents,
     'all': displayAll,
+    'recent': displayRecentActivity,
     'add': addCompany,
     'del': delCompany,
     'once': editModeOff,
@@ -902,6 +945,7 @@ datafolderPath = '%LOCALAPPDATA%\\workboy'
 datafolderPath = os.path.expandvars(datafolderPath)
 datafilePath = datafolderPath + '\\workboy_data'
 backupfilePath = datafolderPath + '\\workboy_backup'
+archivefilePath = datafolderPath + '\\workboy_archive' + str(date.today())
 
 saveOnExit = True               # Whether to save the contents of the company index on exiting the program.
 backupSaveData = ''             # The datafile as a single string. Used to save a backup copy on program exit.
@@ -921,7 +965,7 @@ try:
 except OSError:
     pass
 
-# Restore backedup old datafile if told to
+# Restore backed-up old datafile if told to
 if get(0, argv) == 'restore-backup':
     try:
         with open(backupfilePath, 'r') as backup:
@@ -933,6 +977,68 @@ if get(0, argv) == 'restore-backup':
         print('Failed: no backup file exists for workboy.')
     finally:
         exit()  # Force quit script
+
+# Archive current record
+if get(0, argv) == 'archive':
+    try:
+        with open(datafilePath, 'r') as datafile:
+            with open(archivefilePath, 'w') as archivefile:
+                save = datafile.read()
+                archivefile.write(save)
+        print("History archived at:")
+        print("    " + archivefilePath)
+    except FileNotFoundError:
+        print('Failed: no record to archive.')
+    finally:
+        exit()  # Force quite script
+
+# Restore archive from specified date
+if get(0, argv) == 'restore-archive':
+    dateStr = dateStr if (dateStr := get(1, argv)) != None else ''
+    when = parseDate(dateStr)
+
+    if when == None:
+        print('Date input was malformed or did not exist. Could not identify which archive date to process.')
+        exit()
+    
+    try:
+        targetPath = datafolderPath + '\\workboy_archive' + str(when)
+        with open(targetPath, 'r') as archivefile:
+            with open(datafilePath, 'w') as datafile:
+                save = archivefile.read()
+                datafile.write(save)
+        print('Archive restored.')
+    except FileNotFoundError:
+        print('Failed: no archive from date "{}" exists.'.format(when))
+    finally:
+        exit()
+
+# Print archive files.
+if get(0, argv) == 'display-archives':
+    # TODO I'll need os.read() or whatever.
+    # TODO Also, restore workboy file from laptop
+    # TODO Also, add records for "OMG Coders" and... "Caravel." I think that's all I did.
+    exit()
+
+# Delete an archive file.
+if get(0, argv) == 'delete-archive':
+    dateStr = dateStr if (dateStr := get(1, argv)) != None else ''
+    when = parseDate(dateStr)
+
+    if when == None:
+        print('Date input was malformed or did not exist. Could not identify which archive data to delete.')
+        exit()
+
+    try:
+        targetPath = datafolderPath + '\\workboy_archive' + str(when)
+        os.remove(targetPath)
+        print('Archive removed.')
+    except FileNotFoundError:
+        print('Failed: no archive from date "{}" exists.'.format(when))
+    finally:
+        exit()
+
+    exit()
 
 # Open and read the datafile, if it exists
 try:
