@@ -660,7 +660,7 @@ def editInfo(state):
 
     if message == 'del':
         state.record['info'] = omitKeyValuePairFromCollection(index, state.shift(), formatInfo, l=2)
-    if message == 'move':
+    elif message == 'move':
         a1, a2 = state.shift(), state.shift()
 
         if not (a1.isdigit() and a2.isdigit()):
