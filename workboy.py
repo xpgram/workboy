@@ -10,6 +10,11 @@ import re
 # TODO All ID dictionaries should have their ID space compressed on save.
 # Rather, the working record should do so on save.
 
+
+# TODO Rework?
+# Not that this is bad. It's fine.
+# Why not pair each command type with an instruction string and let the program
+# auto-format everything instead, though?
 helpText = '''
 workboy                     : Display recent activity.
 workboy all                 : Displays the entire company index.
@@ -369,6 +374,7 @@ class InputProcessorState:
         self.last = None
         self.command_set = command_set
         self.pollingEnabled = True
+        self.showOnExit = False
         self.exitSignal = False
 
     def shift(self):
@@ -420,6 +426,10 @@ def inputProcessor(state):
         # until clause
         if not (state.args or state.pollingRequested()):
             break
+    
+    # Final print, if requested
+    if state.showOnExit:
+        state.showRecord()
 
 class Switcher:
     "Keyword switch-case framework for matching string commands to function calls."
@@ -533,7 +543,8 @@ def addCompany(state):
 
         state.index[recordID] = record
         state.setRecord(recordID)
-        state.showRecord()
+        if not state.showOnExit:
+            state.showRecord()
         state.command_set = companyRecordSet
 
     return state
@@ -562,9 +573,10 @@ def delCompany(state):
 
     return endProcessing(state)
 
-def editModeOff(state):
+def editModeOnce(state):
     "Function-object wrapper for disabling user polling."
     state.pollingEnabled = False
+    state.showOnExit = True
     return state
 
 def selectCompany(state):
@@ -580,7 +592,8 @@ def selectCompany(state):
 
     else:
         state.setRecord(id)
-        state.showRecord()
+        if not state.showOnExit:
+            state.showRecord()
         state.command_set = companyRecordSet
 
     displayBuffer()
@@ -605,7 +618,7 @@ globalRecordSet = Switcher({
     'recent': displayRecentActivity,
     'add': addCompany,
     'del': delCompany,
-    'once': editModeOff,
+    'once': editModeOnce,
     'help': displayHelpText
     },
     selectCompany
